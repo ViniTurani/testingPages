@@ -1,25 +1,27 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Hopper-II - Image to Excalidraw </title>
-    <link rel="stylesheet" href="style.css">
+    <title>Hopper-II - Image to Excalidraw</title>
+    <link rel="stylesheet" href="/static/style.css">
   </head>
   <body>
-    <header><h1>Hopper-II <br> Image to Excalidraw </h1></header>
+    <header>
+      <h1>Hopper-II <br> Image to Excalidraw</h1>
+    </header>
     <main>
       <aside>
         <div>
-          <b>File to convert :</b>
+          <b>File to convert:</b>
         </div>
         <label for="source" class="custom-file-upload">Select a file</label>
         <input type="file" id="source" accept=".png, .jpg, .jpeg" />
         <div>
-          <b>Smoothness Scale :</b>
-          <input id="smoothness" type="range"  value="30" min="1" max="100" step="1" />
+          <b>Smoothness Scale:</b>
+          <input id="smoothness" type="range" value="30" min="1" max="100" step="1" />
           <p>Value: <output id="value"></output></p>
         </div>
         
-        <img style="width:80%" id="loadedimg" src=""/>
+        <img style="width:80%" id="loadedimg" src="" />
 
       </aside>
       
@@ -32,9 +34,8 @@
       <button id="stylizeButton" onclick="stylize()">Stylize Image</button> 
       <button id="copyButton" onclick="copyToClipboard()">Copy To Clipboard</button> 
     </main>
-    <script src="imagetracer_v1.2.6.js"></script>
-    <script src="svg-to-excalidraw_vLIS.js"></script>
-    <script src="jquery.js"></script>
-    <script src="script.js"></script>
+    <script src="/static/js/imagetracer_v1.2.6.js"></script>
+    <script src="/static/js/jquery.js"></script>
+    <script src="/static/js/testing.js"></script>
   </body>
 </html>
