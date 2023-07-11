@@ -1,3 +1,4 @@
+import sys
 from flask import Flask, request, render_template
 from shapely import Polygon
 import json
@@ -9,6 +10,8 @@ import cv2
 import os
 
 
+from flask_flatpages import FlatPages # Added
+from flask_frozen import Freezer # Added
 
 
 
@@ -20,7 +23,12 @@ if not os.path.exists('images'):
 
 
 app = Flask(__name__)
+pages = FlatPages(app)
+freezer = Freezer(app) # Added
 
+def page(path):
+    page = pages.get_or_404(path)
+    return render_template("page.html", page=page)
 
 
 @app.route('/')
@@ -75,3 +83,9 @@ def simplify():
 
 if __name__ == '__main__':
 	app.run(host='127.0.0.1', threaded=True)
+
+	if __name__ == "__main__":
+		if len(sys.argv) > 1 and sys.argv[1] == "build":
+			freezer.freeze()
+		else:
+			app.run(port=8000)
