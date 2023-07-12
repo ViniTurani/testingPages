@@ -78,13 +78,13 @@ function run_pipeline() {
 	function process(svg_str) {
 		const { hasErrors, errors, content } = convert(svg_str);
 
-		$.post(
-			'/simplify',
-			{'excalidraw_data' : JSON.stringify(content), 'smoothness':input.value},
-			function(response, status){ 
-				output.value = JSON.stringify(response, null, 2); 
-			}
-		);
+		// $.post(
+		// 	'/simplify',
+		// 	{'excalidraw_data' : JSON.stringify(content), 'smoothness':input.value},
+		// 	function(response, status){ 
+		// 		output.value = JSON.stringify(response, null, 2); 
+		// 	}
+		// );
 	}
 
 	ImageTracer.imageToSVG(fileURL, process);
