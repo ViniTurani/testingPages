@@ -18,7 +18,8 @@ header {
   text-align: center;
   font-size: 1.6rem;
   text-transform: uppercase;
-  background-image: url('bg/hachure.png');
+  background-image: url('App/static/bg/hachure.png');
+  /* background-image: url('bg/hachure.png'); */
   color: rgb(52, 48, 57);
 }
 
@@ -77,7 +78,7 @@ align-items: center;
 justify-content: flex-start;
 margin: 1rem;
 padding: 0.5rem;
-background-image: url('bg/test.png');
+background-image: url('App/static/bg/test.png');
 height: 65%;
 }
 
