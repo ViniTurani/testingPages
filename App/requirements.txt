@@ -1,4 +1,0 @@
-flask
-shapely
-albumentations
-cv2
