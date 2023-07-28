@@ -17,20 +17,26 @@
           <b>Smoothness Scale :</b>
           <input id="smoothness" type="range"  value="30" min="1" max="100" step="1" />
           <p>Value: <output id="value"></output></p>
+            <img style="width:150px" id="loadedimg" src=""/>
+            
+            
+            <button class="button" id="convertButton" onclick="run_pipeline()">Convert</button> 
+            <button class="button"id="stylizeButton" onclick="stylize()">Reduce Colors then Convert</button> 
+            <button class="button" id="copyButton" onclick="copyToClipboard()">Copy to Clipboard</button> 
+       
+            
         </div>
         
-        <img style="width:80%" id="loadedimg" src=""/>
-
-      </aside>
       
-      <textarea
-        id="result"
-        placeholder="The result, in excalidraw file format, will be shown here!"
-        style="font-size: 17px;"
-      ></textarea>
-      <button id="convertButton" onclick="run_pipeline()">Convert</button> 
-      <button id="stylizeButton" onclick="stylize()">Reduce Colors then Convert</button> 
-      <button id="copyButton" onclick="copyToClipboard()">Copy to Clipboard</button> 
+      </aside>
+        <div>
+            <textarea
+              id="result"
+              placeholder="The result, in excalidraw file format, will be shown here!"
+              style="font-size: 17px;"
+            ></textarea>
+              
+        </div>
     </main>
     <script src="js/imagetracer_v1.2.6.js"></script>
     <script src="js/svg-to-excalidraw_vLIS.js"></script>

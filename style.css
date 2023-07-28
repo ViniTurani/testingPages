@@ -31,16 +31,25 @@ main {
   display: flex;
   flex-direction: row;
   height: 100%;
+  
 }
 
 main > aside {
+  width: fit-content;
   display: flex;
   flex-direction: column;
   align-content: center;
   flex: 0.8; 
   background-color: #ffffff;
-  padding: 0.8rem;
+  padding: 1rem;
 }
+body > main > aside > div > div{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  
+}
+
 
 #smoothness {
   display: block;
@@ -52,12 +61,25 @@ main > aside {
   padding: 0.5rem;
 }
 
+body > main > div{
+  display: flex;
+  flex-direction: center;
+  align-items: center;
+  justify-content: flex-start;
+  flex-direction: column;
+  padding: 0.5rem;
+  width: 80%;
+  
+}
+
+
 main > textarea {
   flex: 3;
 }
 
 .custom-file-upload {
   display: inline-block;
+  width: 150px;
   cursor: pointer;
   margin: 1rem 0;
   border-radius: 0.2rem;
@@ -76,49 +98,64 @@ display: flex;
 flex-direction: column;
 align-items: center;
 justify-content: flex-start;
-margin: 1rem;
+margin-left: 5px;
+margin-right: 10px;
 padding: 0.5rem;
 height: 65%;
+width: 100%;
 }
 
-#convertButton {
-  display: block;
 
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  margin: 1rem;
+.button {
+  display: block;
+  width: 150px;
+  cursor: pointer;
+  margin: 1rem 0;
+  border-radius: 0.2rem;
+  background-color: #7d27c3c0;
+  border: 1px solid #333;
+  color: #ffffff;
   padding: 0.5rem;
-  position: absolute;
-  top: calc(74vh + 2rem);
-  left: 21.6%;
-  
 }
 
-#stylizeButton {
-  display: block;
 
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  margin: 1rem;
-  padding: 0.5rem;
-  position: absolute;
-  top: calc(74vh + 2rem);
-  left: 26%;
-  
-}
 
-#copyButton {
-  display: block;
+@media (max-width: 700px) {
+ 
+  main {
+    flex-direction: column;
+    display: flex;
+    flex-direction: center;
+    align-items: center;
+  }
+  main > aside {
+    flex: 1;
+    display: flex;
+    flex-direction: center;
+    align-items: center;
+  }
+  main > textarea {
+    display: flex;
+    flex-direction: center;
+    align-items: center;
+    flex: 1;
+    align-content: center;
+    width: 1000px;
+  }
 
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  margin: 1rem;
-  padding: 0.5rem;
-  position: absolute;
-  top: calc(74vh + 2rem);
-  left: 36.9%;
-  
+  #result{
+    height: 300px;
+    margin-right: 10px;
+  }
+  body > main > div{
+    display: flex;
+    flex-direction: center;
+    align-items: center;
+    justify-content: flex-start;
+    flex-direction: column;
+    padding: 0.5rem;
+    width: 80%;
+    
+  }
+
 }

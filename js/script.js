@@ -63,6 +63,7 @@ function readFile(file) {
 }
 
 function stylize() {
+	output.value = "Running...";
 	async function run_python_lib() {
 		let pyodide = await loadPyodide();
 		// await pyodide.loadPackage("shapely");
@@ -231,6 +232,7 @@ function stylize() {
 }
 
 function run_pipeline() {
+	output.value = "Running...";
 	async function process(svg_str) {
 		const { hasErrors, errors, content } = convert(svg_str);
 
