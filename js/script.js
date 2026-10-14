@@ -647,10 +647,43 @@ async function reduceColors(url) {
 	return pyodide.runPython(REDUCE_COLORS_SCRIPT);
 }
 
+// svg-to-excalidraw walks the SVG recursively, one level per <path>, so photos
+// (tens of thousands of paths) overflow the stack. Convert the paths in batches.
+const PATHS_PER_BATCH = 1000;
+
+function svgToScene(svg) {
+	const root = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+	if (root.nodeName !== "svg") throw new Error("could not read the traced SVG");
+	const paths = Array.from(root.children);
+
+	const elements = [];
+	for (let i = 0; i === 0 || i < paths.length; i += PATHS_PER_BATCH) {
+		const batch = root.cloneNode(false);
+		paths.slice(i, i + PATHS_PER_BATCH).forEach((path) => batch.appendChild(path));
+		const { hasErrors, content } = convert(new XMLSerializer().serializeToString(batch));
+		if (hasErrors) throw new Error("could not read the traced SVG");
+		content.elements.forEach((el) => elements.push(el));
+	}
+
+	// Same order convert() gives: biggest shapes (with their groups) first, small details on top
+	const groupArea = {};
+	elements.forEach((el) => el.groupIds.forEach((id) => {
+		groupArea[id] = (groupArea[id] || 0) + el.width * el.height;
+	}));
+	const weight = (el) => el.width * el.height + el.groupIds.reduce((sum, id) => sum + groupArea[id], 0);
+	elements.sort((a, b) => weight(b) - weight(a));
+
+	return {
+		type: "excalidraw",
+		version: 2,
+		source: "https://www.politecnica.pucrs.br/laboratorios/lis/",
+		elements: elements,
+	};
+}
+
 async function convertImage(url, kept) {
 	const svg = await new Promise((resolve) => ImageTracer.imageToSVG(url, resolve));
-	const { hasErrors, content } = convert(svg);
-	if (hasErrors) throw new Error("could not read the traced SVG");
+	const content = svgToScene(svg);
 
 	const pyodide = await getPyodide(["shapely"]);
 	pyodide.globals.set("exc", pyodide.toPy(content));
