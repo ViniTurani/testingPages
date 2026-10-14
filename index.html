@@ -1,48 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>Hopper-II - Image to Excalidraw </title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hopper-II · Image to Editable Vectors</title>
+    <meta name="description" content="Turn any image into editable vector shapes. Keep the parts you choose untouched, then export to SVG or open in Excalidraw.">
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
-    <header><h1>Hopper-II <br> Image to Excalidraw </h1></header>
-    <main>
-      <aside>
-        <div>
-          <b>File to Convert :</b>
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/>
+          </svg>
         </div>
-        <label for="source" class="custom-file-upload">Select a File</label>
-        <input type="file" id="source" accept=".png, .jpg, .jpeg" />
         <div>
-          <b>Smoothness Scale :</b>
-          <input id="smoothness" type="range"  value="30" min="1" max="100" step="1" />
-          <p>Value: <output id="value"></output></p>
-            <img style="width:150px" id="loadedimg" src=""/>
-            
-            
-            <button class="button" id="convertButton" onclick="run_pipeline()">Convert</button> 
-            <button class="button"id="stylizeButton" onclick="stylize()">Reduce Colors then Convert</button> 
-            <button class="button" id="copyButton" onclick="copyToClipboard()">Copy to Clipboard</button> 
-       
-            
+          <h1>Hopper-II</h1>
+          <p>Image to editable vectors · SVG &amp; Excalidraw</p>
         </div>
-        
-      
+      </div>
+      <a class="btn" href="https://excalidraw.com" target="_blank" rel="noopener">Open Excalidraw ↗</a>
+    </header>
+
+    <main class="app">
+      <aside class="panel">
+        <section class="card">
+          <h2 class="step-title"><span class="step-num">1</span>Image</h2>
+          <label for="source" class="btn btn-block">Choose PNG or JPG</label>
+          <input type="file" id="source" accept=".png, .jpg, .jpeg" />
+          <p id="fileName" class="hint">No file selected</p>
+        </section>
+
+        <section class="card">
+          <h2 class="step-title"><span class="step-num">2</span>Keep original</h2>
+          <p class="hint">
+            Draw over the parts that must stay exactly as in the photo, with their original colors.
+            The rest becomes vector shapes.
+          </p>
+          <div class="segmented" role="group" aria-label="Selection tool">
+            <button class="tool active" data-tool="rect" title="Drag to select a rectangle">Rectangle</button>
+            <button class="tool" data-tool="lasso" title="Draw freehand around an object">Lasso</button>
+          </div>
+          <div class="row">
+            <button class="btn" id="undoButton">Undo</button>
+            <button class="btn" id="clearButton">Clear</button>
+            <span id="selectionCount" class="hint">No areas kept</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 class="step-title"><span class="step-num">3</span>Vectorize</h2>
+          <label class="slider-label" for="smoothness">
+            <span>Smoothness</span><output id="value"></output>
+          </label>
+          <input id="smoothness" type="range" value="30" min="1" max="100" step="1" />
+          <button class="btn btn-primary btn-block" id="convertButton" onclick="run_pipeline()">Convert</button>
+          <button class="btn btn-block" id="stylizeButton" onclick="stylize()">Reduce colors, then convert</button>
+          <p id="status" class="hint status" role="status"></p>
+        </section>
       </aside>
-        <div>
-            <textarea
-              id="result"
-              placeholder="The result, in excalidraw file format, will be shown here!"
-              style="font-size: 17px;"
-            ></textarea>
-              
-        </div>
+
+      <div class="workspace">
+        <section class="card pane">
+          <div class="pane-header">
+            <h2>Original</h2>
+            <span class="hint">Purple outline = kept as is</span>
+          </div>
+          <div id="editor" class="stage">
+            <canvas id="canvas"></canvas>
+            <label for="source" id="placeholder" class="dropzone">
+              <strong>Drop an image here</strong>
+              <span>or click to choose a PNG or JPG</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="card pane">
+          <div class="pane-header">
+            <h2>Result</h2>
+            <div class="row">
+              <button class="btn" id="copyButton" onclick="copyToClipboard()" disabled>Copy for Excalidraw</button>
+              <button class="btn" id="downloadButton" onclick="downloadScene()" disabled>.excalidraw</button>
+              <button class="btn" id="svgButton" onclick="downloadSVG()" disabled>.svg</button>
+            </div>
+          </div>
+          <div class="stage checker">
+            <img id="preview" alt="Vector result preview" />
+            <p id="previewPlaceholder" class="hint">Convert the image to see the vector result here.</p>
+          </div>
+          <details class="json">
+            <summary>Excalidraw JSON</summary>
+            <textarea id="result" placeholder="The result, in excalidraw file format, will be shown here!" spellcheck="false"></textarea>
+          </details>
+        </section>
+      </div>
     </main>
+
+    <footer class="footer">
+      Made at <a href="https://www.politecnica.pucrs.br/laboratorios/lis/" target="_blank" rel="noopener">LIS · PUCRS</a>.
+      Everything runs in your browser; your image is never uploaded.
+    </footer>
+
     <script src="js/imagetracer_v1.2.6.js"></script>
     <script src="js/svg-to-excalidraw_vLIS.js"></script>
-    <script src="js/jquery.js"></script>
     <script src="js/script.js"></script>
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.21.0/full/pyodide.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
   </body>
 </html>
