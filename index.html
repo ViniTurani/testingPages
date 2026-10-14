@@ -35,18 +35,25 @@
         <section class="card">
           <h2 class="step-title"><span class="step-num">2</span>Keep original</h2>
           <p class="hint">
-            Draw over the parts that must stay exactly as in the photo, with their original colors.
+            Select the parts that must stay exactly as in the photo, with their original colors.
             The rest becomes vector shapes.
           </p>
           <div class="segmented" role="group" aria-label="Selection tool">
             <button class="tool active" data-tool="rect" title="Drag to select a rectangle">Rectangle</button>
             <button class="tool" data-tool="lasso" title="Draw freehand around an object">Lasso</button>
+            <button class="tool" data-tool="magic" title="Click an object to select its outline (AI)">Magic</button>
           </div>
+          <p id="toolHint" class="hint tool-hint"></p>
+          <label class="toggle">
+            <input type="checkbox" id="invertToggle" />
+            <span>Invert: keep everything <em>except</em> the selection</span>
+          </label>
           <div class="row">
             <button class="btn" id="undoButton">Undo</button>
             <button class="btn" id="clearButton">Clear</button>
-            <span id="selectionCount" class="hint">No areas kept</span>
+            <span id="selectionCount" class="hint">Nothing selected</span>
           </div>
+          <p id="magicStatus" class="hint status" role="status"></p>
         </section>
 
         <section class="card">

@@ -12,6 +12,9 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const placeholder = document.getElementById("placeholder");
 const selectionCount = document.getElementById("selectionCount");
+const toolHint = document.getElementById("toolHint");
+const magicStatus = document.getElementById("magicStatus");
+const invertToggle = document.getElementById("invertToggle");
 const toolButtons = document.querySelectorAll(".tool[data-tool]");
 const actionButtons = document.querySelectorAll("aside button");
 
@@ -25,18 +28,28 @@ var originalImage = null;
 var fileName = "";
 var resultSVG = "";
 
-// Areas to keep exactly as in the original image, in image pixel coordinates:
-// {type: "rect", x, y, w, h} or {type: "lasso", points: [[x, y], ...]}
+// Selected areas, in image pixel coordinates:
+// {type: "rect", x, y, w, h}, {type: "lasso", points: [[x, y], ...]}
+// or {type: "mask", mask: canvas, edge: canvas, box, points: [{x, y, label}], previous}
 var selections = [];
+// When true the kept area is everything except the selections
+var invertSelection = false;
 var currentTool = "rect";
 var drawing = null;
 
 var pyodideReady = null;
 
+const TOOL_HINTS = {
+	rect: "Drag over the image to select a rectangle.",
+	lasso: "Draw freehand around an object.",
+	magic: "Click an object to select its exact outline. Shift+click adds to it, Alt+click removes a part.",
+};
+
 
 // Initial setup
 canvas.style.display = "none";
 value.textContent = input.value;
+toolHint.textContent = TOOL_HINTS[currentTool];
 
 
 // Listeners
@@ -73,11 +86,21 @@ toolButtons.forEach((button) => {
 	button.addEventListener("click", () => {
 		currentTool = button.dataset.tool;
 		toolButtons.forEach((b) => b.classList.toggle("active", b === button));
+		toolHint.textContent = TOOL_HINTS[currentTool];
+		// Start downloading the model while the user picks an object
+		if (currentTool === "magic") loadSam().catch(() => {});
 	});
 });
 
+invertToggle.addEventListener("change", () => {
+	invertSelection = invertToggle.checked;
+	selectionsChanged();
+});
+
 document.getElementById("undoButton").addEventListener("click", () => {
-	selections.pop();
+	const last = selections.pop();
+	// Shift/Alt+clicks refine a magic selection: undo them one at a time
+	if (last && last.previous) selections.push(last.previous);
 	selectionsChanged();
 });
 
@@ -88,8 +111,12 @@ document.getElementById("clearButton").addEventListener("click", () => {
 
 canvas.addEventListener("pointerdown", (event) => {
 	if (!originalImage || event.button !== 0) return;
-	canvas.setPointerCapture(event.pointerId);
 	const [x, y] = toImageCoords(event);
+	if (currentTool === "magic") {
+		magicSelect(x, y, event.shiftKey, event.altKey);
+		return;
+	}
+	canvas.setPointerCapture(event.pointerId);
 	if (currentTool === "rect") {
 		drawing = { type: "rect", x0: x, y0: y, x: x, y: y, w: 0, h: 0 };
 	} else {
@@ -138,6 +165,11 @@ window.addEventListener("resize", fitCanvas);
 function setStatus(message, busy = false) {
 	statusLine.textContent = message;
 	statusLine.classList.toggle("busy", busy);
+}
+
+function setMagicStatus(message, busy = false) {
+	magicStatus.textContent = message;
+	magicStatus.classList.toggle("busy", busy);
 }
 
 async function copyToClipboard() {
@@ -229,6 +261,7 @@ function readFile(file) {
 			placeholder.style.display = "none";
 			showResult(null);
 			setStatus("");
+			setMagicStatus("");
 
 			canvas.width = img.naturalWidth;
 			canvas.height = img.naturalHeight;
@@ -243,6 +276,13 @@ function readFile(file) {
 
 
 // Selection editor
+function newCanvas(width, height) {
+	const c = document.createElement("canvas");
+	c.width = width;
+	c.height = height;
+	return c;
+}
+
 function fitCanvas() {
 	if (!originalImage) return;
 	const maxWidth = editor.clientWidth - 24;
@@ -251,6 +291,11 @@ function fitCanvas() {
 	canvas.style.width = Math.floor(canvas.width * scale) + "px";
 	canvas.style.height = Math.floor(canvas.height * scale) + "px";
 	redraw();
+}
+
+// Image pixels per screen pixel
+function imagePixelsPerScreenPixel() {
+	return canvas.width / (canvas.getBoundingClientRect().width || canvas.width);
 }
 
 function toImageCoords(event) {
@@ -266,6 +311,9 @@ function toImageCoords(event) {
 function bounds(sel) {
 	if (sel.type === "rect") {
 		return { x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+	}
+	if (sel.type === "mask") {
+		return sel.box;
 	}
 	const xs = sel.points.map((p) => p[0]);
 	const ys = sel.points.map((p) => p[1]);
@@ -283,7 +331,7 @@ function polygonArea(points) {
 	return Math.abs(area) / 2;
 }
 
-// Adds the outline of a selection to the context, shifted by (dx, dy)
+// Adds the outline of a rectangle or lasso to the context, shifted by (dx, dy)
 function selectionPath(context, sel, dx = 0, dy = 0) {
 	context.beginPath();
 	if (sel.type === "rect") {
@@ -297,9 +345,49 @@ function selectionPath(context, sel, dx = 0, dy = 0) {
 	}
 }
 
+// Paints a selection in opaque white, shifted by (dx, dy)
+function paintSelection(context, sel, dx = 0, dy = 0) {
+	if (sel.type === "mask") {
+		context.drawImage(sel.mask, -dx, -dy);
+	} else {
+		context.fillStyle = "#ffffff";
+		selectionPath(context, sel, dx, dy);
+		context.fill();
+	}
+}
+
+// The area that keeps the original pixels, in white on a transparent canvas (null if none)
+function keepMask(shapes) {
+	if (shapes.length === 0) return null;
+	const c = newCanvas(originalImage.naturalWidth, originalImage.naturalHeight);
+	const g = c.getContext("2d");
+	shapes.forEach((sel) => paintSelection(g, sel));
+	if (invertSelection) {
+		g.globalCompositeOperation = "xor";
+		g.fillStyle = "#ffffff";
+		g.fillRect(0, 0, c.width, c.height);
+	}
+	return c;
+}
+
+// Grows the opaque part of a canvas by r pixels
+function dilate(source, r) {
+	const c = newCanvas(source.width, source.height);
+	const g = c.getContext("2d");
+	for (let dx = -r; dx <= r; dx++) {
+		for (let dy = -r; dy <= r; dy++) {
+			if (dx * dx + dy * dy <= r * r) g.drawImage(source, dx, dy);
+		}
+	}
+	return c;
+}
+
 function selectionsChanged() {
 	const n = selections.length;
-	selectionCount.textContent = n === 0 ? "No areas kept" : n === 1 ? "1 area kept" : n + " areas kept";
+	const areas = n === 1 ? "1 area" : n + " areas";
+	if (n === 0) selectionCount.textContent = "Nothing selected";
+	else if (invertSelection) selectionCount.textContent = areas + " selected: keeping everything else";
+	else selectionCount.textContent = areas + " kept";
 	redraw();
 }
 
@@ -311,43 +399,40 @@ function redraw() {
 	const shapes = drawing ? selections.concat([drawing]) : selections;
 	if (shapes.length === 0) return;
 
-	// Fade what will be vectorized so the kept areas stand out
+	// Fade what will be vectorized so the kept area stands out
 	ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
 	ctx.fillRect(0, 0, canvas.width, canvas.height);
-	for (const sel of shapes) {
-		ctx.save();
-		selectionPath(ctx, sel);
-		ctx.clip();
-		ctx.drawImage(originalImage, 0, 0);
-		ctx.restore();
-	}
+	const kept = keepMask(shapes);
+	const g = kept.getContext("2d");
+	g.globalCompositeOperation = "source-in";
+	g.drawImage(originalImage, 0, 0);
+	ctx.drawImage(kept, 0, 0);
 
 	// Keep the outline about 2 screen pixels wide whatever the zoom
-	const px = canvas.width / (canvas.getBoundingClientRect().width || canvas.width);
+	const px = imagePixelsPerScreenPixel();
 	ctx.lineWidth = 2 * px;
 	ctx.setLineDash([6 * px, 4 * px]);
 	ctx.strokeStyle = "#7d27c3";
 	for (const sel of shapes) {
-		selectionPath(ctx, sel);
-		ctx.stroke();
+		if (sel.type === "mask") {
+			ctx.drawImage(sel.edge, 0, 0);
+		} else {
+			selectionPath(ctx, sel);
+			ctx.stroke();
+		}
 	}
 	ctx.setLineDash([]);
 }
 
-// The image sent to the vectorizer: the kept areas are painted white, so they
-// are neither traced nor counted when reducing the colors
+// The image sent to the vectorizer: the kept area is painted white, so it is
+// neither traced nor counted when reducing the colors
 function tracingInputURL() {
-	if (selections.length === 0) return originalURL;
-	const c = document.createElement("canvas");
-	c.width = originalImage.naturalWidth;
-	c.height = originalImage.naturalHeight;
+	const kept = keepMask(selections);
+	if (!kept) return originalURL;
+	const c = newCanvas(originalImage.naturalWidth, originalImage.naturalHeight);
 	const g = c.getContext("2d");
 	g.drawImage(originalImage, 0, 0);
-	g.fillStyle = "#ffffff";
-	for (const sel of selections) {
-		selectionPath(g, sel);
-		g.fill();
-	}
+	g.drawImage(kept, 0, 0);
 	return c.toDataURL("image/png");
 }
 
@@ -360,7 +445,8 @@ function randomInt() {
 	return crypto.getRandomValues(new Uint32Array(1))[0] >>> 1;
 }
 
-// One Excalidraw image element per kept area, cut from the original pixels.
+// Excalidraw image elements with the original pixels of the kept area: one per
+// selection, or a single one for the whole picture when the selection is inverted.
 // Scene coordinates match image pixels, so each piece lands where it was.
 function keptImages() {
 	const elements = [];
@@ -368,26 +454,25 @@ function keptImages() {
 	const W = originalImage.naturalWidth;
 	const H = originalImage.naturalHeight;
 
-	for (const sel of selections) {
-		// 1px margin so the piece also covers the antialiased edge of the white hole
-		const b = bounds(sel);
+	const kept = keepMask(selections);
+	if (!kept) return { elements: elements, files: files };
+	const pieces = invertSelection
+		? [{ box: { x: 0, y: 0, w: W, h: H }, paint: (g, x, y) => g.drawImage(kept, -x, -y) }]
+		: selections.map((sel) => ({ box: bounds(sel), paint: (g, x, y) => paintSelection(g, sel, x, y) }));
+
+	for (const piece of pieces) {
+		// 1px margin: the piece is grown by 1px to cover the antialiased edge of the white hole
+		const b = piece.box;
 		const x = Math.max(0, Math.floor(b.x) - 1);
 		const y = Math.max(0, Math.floor(b.y) - 1);
 		const w = Math.min(W, Math.ceil(b.x + b.w) + 1) - x;
 		const h = Math.min(H, Math.ceil(b.y + b.h) + 1) - y;
 
-		const c = document.createElement("canvas");
-		c.width = w;
-		c.height = h;
+		const mask = newCanvas(w, h);
+		piece.paint(mask.getContext("2d"), x, y);
+		const c = dilate(mask, 1);
 		const g = c.getContext("2d");
-		if (sel.type === "lasso") {
-			// Paint the lasso (grown by 1px) as a mask, then keep the image only inside it
-			selectionPath(g, sel, x, y);
-			g.fill();
-			g.lineWidth = 2;
-			g.stroke();
-			g.globalCompositeOperation = "source-in";
-		}
+		g.globalCompositeOperation = "source-in";
 		g.drawImage(originalImage, -x, -y);
 
 		const now = Date.now();
@@ -429,6 +514,155 @@ function keptImages() {
 		});
 	}
 	return { elements: elements, files: files };
+}
+
+
+// Magic selection: SlimSAM (a small Segment Anything model) running in the
+// browser with transformers.js. The model (~14 MB) is downloaded on first use.
+const SAM_MODEL = "Xenova/slimsam-77-uniform";
+const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+var samReady = null;
+var samEmbeddings = null;
+var segmenting = false;
+
+function loadSam() {
+	if (!samReady) {
+		samReady = import(TRANSFORMERS_URL).then(async (transformers) => {
+			const [model, processor] = await Promise.all([
+				transformers.SamModel.from_pretrained(SAM_MODEL, { dtype: "q8", device: "wasm" }),
+				transformers.AutoProcessor.from_pretrained(SAM_MODEL),
+			]);
+			return { transformers: transformers, model: model, processor: processor };
+		});
+		// Allow a new try after a failed download
+		samReady.catch(() => (samReady = null));
+	}
+	return samReady;
+}
+
+// The image encoder runs once per picture; each click only runs the small decoder
+function imageEmbeddings(sam) {
+	if (!samEmbeddings || samEmbeddings.image !== originalImage) {
+		const image = originalImage;
+		const W = image.naturalWidth;
+		const H = image.naturalHeight;
+		const c = newCanvas(W, H);
+		const g = c.getContext("2d");
+		g.fillStyle = "#ffffff";
+		g.fillRect(0, 0, W, H);
+		g.drawImage(image, 0, 0);
+		const rgba = g.getImageData(0, 0, W, H).data;
+		const rgb = new Uint8ClampedArray(W * H * 3);
+		for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+			rgb[j] = rgba[i];
+			rgb[j + 1] = rgba[i + 1];
+			rgb[j + 2] = rgba[i + 2];
+		}
+		const raw = new sam.transformers.RawImage(rgb, W, H, 3);
+		const promise = sam.processor(raw).then(async (inputs) => ({
+			inputs: inputs,
+			embeddings: await sam.model.get_image_embeddings(inputs),
+		}));
+		samEmbeddings = { image: image, promise: promise };
+		promise.catch(() => (samEmbeddings = null));
+	}
+	return samEmbeddings.promise;
+}
+
+// Runs SAM for the given points and returns the best mask as a white-on-transparent canvas
+async function segment(sam, encoded, points) {
+	const W = originalImage.naturalWidth;
+	const H = originalImage.naturalHeight;
+	const { transformers, model, processor } = sam;
+	const [rh, rw] = encoded.inputs.reshaped_input_sizes[0];
+
+	const coords = points.flatMap((p) => [(p.x / W) * rw, (p.y / H) * rh]);
+	const input_points = new transformers.Tensor("float32", coords, [1, 1, points.length, 2]);
+	const input_labels = new transformers.Tensor("int64", points.map((p) => BigInt(p.label)), [1, 1, points.length]);
+	const outputs = await model({ ...encoded.embeddings, input_points: input_points, input_labels: input_labels });
+	const masks = await processor.post_process_masks(
+		outputs.pred_masks,
+		encoded.inputs.original_sizes,
+		encoded.inputs.reshaped_input_sizes
+	);
+
+	// SAM proposes 3 masks (part, bigger part, whole object): take the most confident
+	const scores = outputs.iou_scores.data;
+	let best = 0;
+	for (let i = 1; i < scores.length; i++) if (scores[i] > scores[best]) best = i;
+	const data = masks[0][0].data;
+	const offset = best * W * H;
+
+	const c = newCanvas(W, H);
+	const g = c.getContext("2d");
+	const image = g.createImageData(W, H);
+	let minX = W, minY = H, maxX = -1, maxY = -1;
+	for (let y = 0, i = 0; y < H; y++) {
+		for (let x = 0; x < W; x++, i++) {
+			if (!data[offset + i]) continue;
+			image.data.fill(255, 4 * i, 4 * i + 4);
+			if (x < minX) minX = x;
+			if (x > maxX) maxX = x;
+			if (y < minY) minY = y;
+			if (y > maxY) maxY = y;
+		}
+	}
+	if (maxX < 0) return null;
+	g.putImageData(image, 0, 0);
+	return { mask: c, box: { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 } };
+}
+
+// Purple outline just outside a mask, for the editor
+function maskEdge(mask) {
+	const r = Math.max(1, Math.round(1.5 * imagePixelsPerScreenPixel()));
+	const c = dilate(mask, r);
+	const g = c.getContext("2d");
+	g.globalCompositeOperation = "destination-out";
+	g.drawImage(mask, 0, 0);
+	g.globalCompositeOperation = "source-in";
+	g.fillStyle = "#7d27c3";
+	g.fillRect(0, 0, c.width, c.height);
+	return c;
+}
+
+async function magicSelect(x, y, add, remove) {
+	if (segmenting) return;
+	const image = originalImage;
+	const last = selections[selections.length - 1];
+	const refine = (add || remove) && last && last.type === "mask";
+	const point = { x: x, y: y, label: remove ? 0 : 1 };
+	const points = refine ? last.points.concat([point]) : [point];
+
+	segmenting = true;
+	canvas.classList.add("waiting");
+	try {
+		setMagicStatus("Loading the segmentation model (~14 MB, first time only)...", true);
+		const sam = await loadSam();
+		setMagicStatus("Analyzing the image...", true);
+		const encoded = await imageEmbeddings(sam);
+		setMagicStatus("Selecting...", true);
+		const result = await segment(sam, encoded, points);
+		if (image !== originalImage) return;
+		if (!result) {
+			setMagicStatus("Nothing found there, try another spot.");
+			return;
+		}
+		const sel = { type: "mask", mask: result.mask, box: result.box, points: points, edge: maskEdge(result.mask) };
+		if (refine) {
+			sel.previous = last;
+			selections[selections.length - 1] = sel;
+		} else {
+			selections.push(sel);
+		}
+		setMagicStatus("");
+		selectionsChanged();
+	} catch (error) {
+		console.error(error);
+		setMagicStatus("Segmentation failed: " + error.message);
+	} finally {
+		segmenting = false;
+		canvas.classList.remove("waiting");
+	}
 }
 
 
@@ -681,6 +915,60 @@ function svgToScene(svg) {
 	};
 }
 
+function loadImage(url) {
+	return new Promise((resolve, reject) => {
+		const img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = () => reject(new Error("could not read the traced image"));
+		img.src = url;
+	});
+}
+
+// Excalidraw shapes cannot have holes, so the converter covers each hole with a
+// white shape. Where the shapes meant to fill a hole are too small to be kept,
+// that white shows through as specks. Paint each hole with the average color of
+// the pixels it covers instead (holes over transparent background stay white).
+async function fillHoles(scene, url) {
+	const img = await loadImage(url);
+	const W = img.naturalWidth;
+	const H = img.naturalHeight;
+	const source = newCanvas(W, H).getContext("2d", { willReadFrequently: true });
+	source.drawImage(img, 0, 0);
+	const pixels = source.getImageData(0, 0, W, H).data;
+
+	for (const el of scene.elements) {
+		if (el.backgroundColor !== "#FFFFFF" || !el.points || el.points.length < 3) continue;
+		const x0 = Math.max(0, Math.floor(el.x));
+		const y0 = Math.max(0, Math.floor(el.y));
+		const w = Math.min(W, Math.ceil(el.x + el.width)) - x0;
+		const h = Math.min(H, Math.ceil(el.y + el.height)) - y0;
+		if (w <= 0 || h <= 0) continue;
+
+		const g = newCanvas(w, h).getContext("2d", { willReadFrequently: true });
+		g.beginPath();
+		el.points.forEach(([px, py], i) => g[i === 0 ? "moveTo" : "lineTo"](el.x + px - x0, el.y + py - y0));
+		g.fill();
+		const inside = g.getImageData(0, 0, w, h).data;
+
+		let r = 0, gr = 0, b = 0, opaque = 0, count = 0;
+		for (let yy = 0; yy < h; yy++) {
+			for (let xx = 0; xx < w; xx++) {
+				if (inside[4 * (yy * w + xx) + 3] < 128) continue;
+				const i = 4 * ((y0 + yy) * W + x0 + xx);
+				const a = pixels[i + 3] / 255;
+				r += pixels[i] * a;
+				gr += pixels[i + 1] * a;
+				b += pixels[i + 2] * a;
+				opaque += a;
+				count++;
+			}
+		}
+		if (count > 0 && opaque > count / 2) {
+			el.backgroundColor = `rgb(${Math.round(r / opaque)},${Math.round(gr / opaque)},${Math.round(b / opaque)})`;
+		}
+	}
+}
+
 async function convertImage(url, kept) {
 	const svg = await new Promise((resolve) => ImageTracer.imageToSVG(url, resolve));
 	const content = svgToScene(svg);
@@ -692,6 +980,7 @@ async function convertImage(url, kept) {
 
 	// The tracer gives opacity as 0-255, Excalidraw expects 0-100
 	scene.elements.forEach((el) => (el.opacity = Math.round(Math.min(el.opacity, 255) / 2.55)));
+	await fillHoles(scene, url);
 
 	const shapes = scene.elements.length;
 	scene.elements.push(...kept.elements);
